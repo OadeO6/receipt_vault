@@ -1,0 +1,19 @@
+services:
+  api:
+    container_name: receipt_vault_api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/app/app:ro
+      - ./scripts:/app/scripts:ro
+    environment:
+      # - UV_PROJECT_ENVIRONMENT=/app/.venv
+      - DEBUG=true
+      - ENV=development
+
+  db:
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  api_dependencies:

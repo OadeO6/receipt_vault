@@ -1,0 +1,47 @@
+services:
+  api: &app_base
+    # image: '${API_IMAGE? not found}:${API_IMAGE_TAG-latest}'
+    restart: always
+    build:
+      context: ./
+      dockerfile: Dockerfile.dev
+    # depends_on:
+    #   prestart:
+    #     condition: service_completed_successfully
+    #   db:
+    #     condition: service_completed_successfully
+    #     # restart: true
+    env_file:
+      - ./.env
+  prestart:
+    image: '${API_IMAGE? not found}:${API_IMAGE_TAG-lattest}'
+    build:
+      context: ./
+      dockerfile: Dockerfile.dev
+    env_file:
+      - ./.env
+    command: pwd
+    # command: bash scripts/prestart.sh
+  db:
+    image: postgres:12
+    restart: always
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT-5432}:${POSTGRES_PORT-5432}"
+    environment:
+      - PGDATA=/var/lib/postgresql/data/pgdata
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD?Variable not set}
+      - POSTGRES_USER=${POSTGRES_USER?Variable not set}
+      - POSTGRES_DB=${POSTGRES_DB?Variable not set}
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      retries: 5
+      start_period: 30s
+      timeout: 10s
+
+
+volumes:
+  postgres_data:
