@@ -1,6 +1,6 @@
 services:
   api: &app_base
-    # image: '${API_IMAGE? not found}:${API_IMAGE_TAG-latest}'
+    image: '${API_IMAGE? not found}:${API_IMAGE_TAG-latest}'
     restart: always
     build:
       context: ./
@@ -13,6 +13,12 @@ services:
     #     # restart: true
     env_file:
       - ./.env
+  worker:
+    <<: *app_base
+    volumes:
+      - ./app:/app/app:ro
+    command: dramatiq app.tasks.actors --processes 4 --threads 8
+
   prestart:
     image: '${API_IMAGE? not found}:${API_IMAGE_TAG-lattest}'
     build:
@@ -22,6 +28,10 @@ services:
       - ./.env
     command: pwd
     # command: bash scripts/prestart.sh
+
+  redis:
+    image: redis:7
+
   db:
     image: postgres:12
     restart: always

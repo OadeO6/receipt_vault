@@ -11,4 +11,5 @@ router = APIRouter()
 
 @router.post("/register")
 async def register(user: UserRegister, user_repo: UserRepo):
-    user_repo.create_user(user)
+    res = await user_repo.create_user(user)
+    return res
