@@ -20,10 +20,8 @@ class ReceiptService:
         return location
 
 
-    def process_image(self, location) -> bool:
+    def process_image(self, user_id, location) -> bool:
         image = self.file_handler.get_file(location)
-        print(image)
-        # procesing
 
         data = {
             "business": {
@@ -55,6 +53,7 @@ class ReceiptService:
         items_data = [ItemsData(**idata) for idata in data["items"]]
 
         success = self.receipt_repo.create_receipt_with_items(
+            user_id,
             business_data,
             receipt_data, items_data
         )
@@ -81,6 +80,7 @@ class ReceiptService:
 
     def get_receipts(
         self,
+        user_id: UUID | None = None,
         business_name: str | None = None,
         invoice_number: str | None = None,
         payment_method: str | None = None,
@@ -101,5 +101,6 @@ class ReceiptService:
             end_date,
             skip,
             limit,
+            user_id=user_id,
         )
         return result

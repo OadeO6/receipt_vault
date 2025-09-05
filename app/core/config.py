@@ -2,7 +2,7 @@ import secrets
 from typing import Any
 
 from pydantic import PostgresDsn, ValidationInfo, field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     DEBUG: bool
@@ -39,6 +39,23 @@ class Settings(BaseSettings):
                 path=f"{db}",
             )
         raise ValueError(f"{user}{password}{host}{port}{db}")
+
+    OTEL_SERVICE_NAME: str = "receipt-vault"
+    OTEL_RESOURCE_SERVICE_NAME: str = "receipt-vault"
+    OTEL_SERVICE_VERSION: str = "1.0.0"
+
+    OTEL_EXPORTER_OTLP_ENDPOINT: str = "http://otel-collector:4317"
+
+    OTEL_TRACES_EXPORTER: str | None = None
+    OTEL_METRICS_EXPORTER: str | None = None
+    OTEL_LOGS_EXPORTER: str | None = None
+
+    OBSERVABILITY: bool = False
+
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 10
+    TOKEN_ALGORITHM: str = "HS256"
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
 settings = Settings()

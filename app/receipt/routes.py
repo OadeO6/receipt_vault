@@ -2,7 +2,7 @@ from app.receipt.schema import ItemsDetailsDict, ItemsDetailsSchema
 from fastapi import APIRouter, UploadFile,  HTTPException
 
 from app.receipt.service import ReceiptService
-from app.dep import ReceiptServiceDep
+from app.dep import CurrentUser, ReceiptServiceDep
 
 
 router = APIRouter()
@@ -11,14 +11,15 @@ router = APIRouter()
 @router.post("/image")
 async def upload_file(
     file: UploadFile,
-    receiptService: ReceiptServiceDep
+    receiptService: ReceiptServiceDep,
+    current_user: CurrentUser
 ):
     image_loc = receiptService.store_image_init(file)
-    success = receiptService.process_image(image_loc)
+    success = receiptService.process_image(current_user.id, image_loc)
     if not success:
         return HTTPException(
-            status=500,
-            details="Something went wrong"
+            detail="Something went wrong",
+            status_code=500,
         )
     return {"status": "successful"}
 
@@ -27,6 +28,7 @@ async def upload_file(
 @router.get("/", response_model=list[ItemsDetailsSchema])
 async def get_receipts(
     receiptService: ReceiptServiceDep,
+    current_user: CurrentUser,
     business_name: str | None = None,
     invoice_number: str | None = None,
     payment_method: str | None = None,
@@ -38,6 +40,7 @@ async def get_receipts(
     limit: int = 100,
 ):
     return receiptService.get_receipts(
+        user_id=current_user.id,
         business_name=business_name,
         invoice_number=invoice_number,
         payment_method=payment_method,

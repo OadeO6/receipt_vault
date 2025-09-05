@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from time import time
 from asgi_correlation_id import CorrelationIdMiddleware
 from dramatiq.middleware import CurrentMessage, Shutdown
@@ -14,13 +15,13 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from logging.config import dictConfig
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
 from app.core.logger import log_config, CustomLogger
 from app.core.broker import broker
-
+from app.instrumentation import get_tracer, initialize_logs, initialize_metrics, initialize_tracer
 from app.receipt.models import Items, Receipt
 from app.tasks.actors import count_words, example
-
-logger = CustomLogger(__name__)
 
 
 from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
@@ -32,11 +33,38 @@ from app.core.connection import sync_engine
 
 # TODO: Make rate limiting only for prod
 limiter = Limiter(key_func=get_remote_address)
+
+
+logger = CustomLogger(__name__)
+
+initialize_tracer()
+initialize_metrics()
+initialize_logs()
+
+tracer = get_tracer()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("App startup: Starting scheduler...")
+    # TODO: replace this with migration
+    # create_schema
+    Base.metadata.create_all(bind=sync_engine)
+    logger.info("App startup complete.")
+    yield
+    logger.info("App shutdown: Shutting down scheduler...")
+    broker.close()
+    logger.info("App shutdown complete.")
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
     openapi_url=f"/{settings.API_V1_STR}/openapi.json",
-    debug=settings.DEBUG
+    debug=settings.DEBUG,
+    lifespan=lifespan,
 )
+
+
+if settings.OBSERVABILITY:
+    FastAPIInstrumentor.instrument_app(app, tracer_provider=initialize_tracer())
 
 # configure logging
 dictConfig(log_config)
@@ -71,10 +99,6 @@ async def custom_global_exception_handler(_: Request, exc: CustomError):
         },
     )
 
-# TODO: replace this with migration
-@app.on_event("startup")
-def create_schema():
-    Base.metadata.create_all(bind=sync_engine)
 
 
 class TimingMiddleware(BaseHTTPMiddleware):
@@ -89,10 +113,6 @@ app.add_middleware(CorrelationIdMiddleware)
 app.add_middleware(TimingMiddleware)
 
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup on shutdown"""
-    broker.close()
 
 
 @app.get("/")
@@ -102,6 +122,12 @@ async def root():
     logger.info(f"Enqueued baground Job: {job_id}")
     example.send()
     return {"message": "Welcome to the Learning Platform API"}
+    # with tracer.start_as_current_span("root"):
+    #     i = count_words.send("http://example.com")
+    #     job_id = i.message_id
+    #     logger.info(f"Enqueued baground Job: {job_id}")
+    #     example.send()
+    #     return {"message": "Welcome to the Learning Platform API"}
 
 @app.get("/health")
 async def health_check():

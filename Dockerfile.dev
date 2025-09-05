@@ -43,3 +43,11 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync
 
 CMD ["uvicorn", "app.main:app", "--reload", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+# CMD ["opentelemetry-instrument", \
+#      "--traces_exporter", "console,otlp", \
+#      "--metrics_exporter", "console,otlp", \
+#      "--service_name", "your-service-name", \
+#      "--exporter_otlp_endpoint", "http://otel-collector:4318/v1/traces", \
+#      "--exporter_otlp_protocol", "http/protobuf", \
+#      "uvicorn", "app.main:app", "--reload", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+

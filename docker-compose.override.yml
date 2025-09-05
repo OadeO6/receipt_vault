@@ -1,6 +1,8 @@
 services:
   api:
     container_name: receipt_vault_api
+    networks:
+      - receipt_vault_observability
     ports:
       - "8000:8000"
     volumes:
@@ -9,11 +11,110 @@ services:
     environment:
       # - UV_PROJECT_ENVIRONMENT=/app/.venv
       - DEBUG=true
+      # observability
+      - OVSERVABILITY=true
       - ENV=development
+      - OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true
+
+  worker:
+    networks:
+      - receipt_vault_observability
 
   db:
+    container_name: receipt_vault_db
+    networks:
+      - receipt_vault_observability
+    ports:
+      - "${POSTGRES_PORT-5432}:${POSTGRES_PORT-5432}"
+
+  redis:
+    networks:
+      - receipt_vault_observability
+    container_name: receipt_vault_redis
+    ports:
+      - "${REDIS_PORT-6379}:${REDIS_PORT-6379}"
+
+
+  # observability
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    networks:
+      - receipt_vault_observability
+    ports:
+      - "${JAEGER_PORT-16686}:16686"
+      # - "${OTEL_COLLECTOR_PORT_GRPC-4317}"
+      # - "14250:14250"
+      - "14269:14269"
+      # - "16687:16687"
+      # - "14271:14271"
+
+
+  loki:
+    image: grafana/loki:latest
+    networks:
+      - receipt_vault_observability
+    ports:
+      - "3100:3100"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./loki-config.yml:/etc/loki/loki-config.yaml
+      - ./loki-data:/loki
+    command: -config.file=/etc/loki/loki-config.yaml
+
+  prometheus:
+    image: prom/prometheus:v2.46.0
+    networks:
+      - receipt_vault_observability
+    ports:
+      - 9090:9090
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+
+  grafana:
+    image: grafana/grafana:latest
+    networks:
+      - receipt_vault_observability
+    ports:
+      - "3000:3000"
+    depends_on:
+      - loki
+      - prometheus
+    volumes:
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_DEFAULT_APP_MODE=development
+
+
+
+  # otel collector
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.77.0
+    networks:
+      - receipt_vault_observability
+    ports:
+      - "${OTEL_COLLECTOR_PORT_GRPC-4317}:4317"
+      - "${OTEL_COLLECTOR_PORT_HTTP-4318}:4318"
+      - "8888:8888"
+
+    volumes:
+      - ./otel-collector.yaml:/etc/otelcol-config.yml
+    # command: --set receivers.otlp.protocols.http.endpoint=0.0.0.0:4317
+    command: [ "--config=/etc/otelcol-config.yml" ]
+
+    depends_on:
+      - jaeger
+      - loki
+      - prometheus
+      - grafana
+
+networks:
+  receipt_vault_observability:
+    driver: bridge
 
 volumes:
   api_dependencies:

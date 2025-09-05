@@ -1,0 +1,71 @@
+# TODO: i cant find logs in traces yet, needs to be fixed
+receivers:
+  otlp/otel:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+  docker_stats:
+    endpoint: unix:///var/run/docker.sock
+    collection_interval: 15s
+    container_labels_to_metric_labels:
+      my.container.label: my-metric-label
+      my.other.container.label: my-other-metric-label
+    env_vars_to_metric_labels:
+      MY_ENVIRONMENT_VARIABLE: my-metric-label
+      MY_OTHER_ENVIRONMENT_VARIABLE: my-other-metric-label
+    excluded_images:
+      - undesired-container
+      - /.*undesired.*/
+      - another-*-container
+    metrics:
+      container.cpu.usage.percpu:
+        enabled: true
+      container.network.io.usage.tx_dropped:
+        enabled: false
+
+exporters:
+  # otel:
+  #   endpoint: http://localhost:4317
+
+  # otel/2:
+  #   endpoint: http://localhost:4317
+
+  logging:
+    loglevel: debug
+
+  jaeger:
+    endpoint: jaeger:14250
+    tls:
+      insecure: true
+
+  prometheus:
+    endpoint: "0.0.0.0:9090"
+
+  loki:
+    endpoint: http://loki:3100/loki/api/v1/push
+    # tls:
+    #   insecure: true
+    # batch:
+    #   timeout: 10s
+    #   max_size: 1024
+#
+
+processors:
+  batch:
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp/otel]
+      processors: [batch]
+      exporters: [jaeger]
+    logs:
+      receivers: [otlp/otel]
+      processors: [batch]
+      exporters: [loki]
+    metrics:
+      receivers: [otlp/otel]
+      processors: [batch]
+      exporters: [prometheus, logging]

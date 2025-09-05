@@ -2,6 +2,8 @@ import logging
 from asgi_correlation_id.log_filters import CorrelationIdFilter
 from magic.loader import sys
 
+from app.instrumentation import initialize_logs
+
 
 log_config = {
     "version": 1,
@@ -50,6 +52,9 @@ log_config = {
             "backupCount": 5,
             "filters": ["correlation_id"],
             "level": "ERROR"
+        },
+        "otel": {
+            '()': initialize_logs,  # TODO: get a better way to do this
         }
     },
     "loggers": {
@@ -59,7 +64,8 @@ log_config = {
              "propagate": False
              },
         "app": {
-                "handlers": ["console", "file", "error_file"],
+                "handlers": ["console", "file", "error_file", "otel"],
+                # "handlers": ["console", "file", "error_file"],
                 "level": "DEBUG",
                 "propagate": False
                 },

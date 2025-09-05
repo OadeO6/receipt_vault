@@ -1,4 +1,6 @@
 from datetime import datetime, timezone
+from uuid import uuid4
+import uuid
 from pydantic import UUID4
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -28,24 +30,18 @@ class ReceiptRepository:
         flush: if true flush else no flush and return None if both commit and flush are false
         commit: if true commit else no commit and return None if both commit and flush are false
         """
-        print("commit:2", commit, "flush:", flush, "return_obj:", return_obj, "obj:", obj)
         try:
             if commit:
                 self.session.commit()
             else:
                 if flush:
-                    print("3flushing")
                     self.session.flush()
         except IntegrityError as e:
-            print("rolling back", e)
             self.session.rollback()
             raise e
-        print("committingi999")
         if not commit and not flush:
             return None
-        print("committing")
         if return_obj:
-            print("refreshing")
             self.session.refresh(obj)
             return obj
 
@@ -74,11 +70,13 @@ class ReceiptRepository:
 
     def create_receipt(
         self,
+        user_id: uuid.UUID,
         rdata: ReceiptCreate, business_id: UUID4,
         commit=True, refresh=True,
         flush=True
     ) -> Receipt | None:
         receipt = Receipt(
+            user_id=user_id,
             **rdata.model_dump(),
             business_id=business_id,
             image_url=""
@@ -101,17 +99,15 @@ class ReceiptRepository:
         return items
 
     def create_receipt_with_items(
-        self, bdata: BusinessCreate,
+        self, user_id: uuid.UUID, bdata: BusinessCreate,
         rdata: ReceiptCreate, idata: list[ItemsCreate]
     ) -> bool:
         # TODO: handle error well
         try:
             business = self.get_business(bdata.name, bdata.address)
-            print("business:", business)
             if not business:
                 business = self.create_bussiness(bdata, commit=False)
-            receipt = self.create_receipt(rdata, business.id, commit=False)
-            print("receipt:", receipt)
+            receipt = self.create_receipt(user_id, rdata, business.id, commit=False)
             self.create_items(idata, receipt.id, commit=False)
             self.session.commit()
         except SQLAlchemyError as e:
@@ -128,11 +124,13 @@ class ReceiptRepository:
     def update_receipt(self):
         pass
 
-    def get_receipt(self, receipt_id: UUID4) -> Receipt | None:
+    def get_receipt(self, receipt_id: UUID4, user_id: UUID4 | None = None) -> Receipt | None:
         query = (
             select(Receipt)
             .where(Receipt.id == receipt_id)
         )
+        if user_id:
+            query = query.where(Receipt.user_id == user_id)
         return self.session.execute(query).scalars().first()
 
     def get_receipts(
@@ -143,7 +141,17 @@ class ReceiptRepository:
         ),
         skip: int = 0, limit: int = 100
     ):
-        pass
+        query = (
+            select(Receipt)
+            .where(Receipt.created_at >= start_date)
+            .where(Receipt.created_at <= end_date)
+        )
+        if user_id:
+            query = query.where(Receipt.user_id == user_id)
+        if business_name:
+            query = query.join(Business).where(Business.name == business_name)
+        query = query.offset(skip).limit(limit)
+        return self.session.execute(query).scalars().all()
 
     def get_items_with_filters(
         self,
@@ -156,6 +164,7 @@ class ReceiptRepository:
         end_date: str | None = None,
         skip: int = 0,
         limit: int = 100,
+        user_id: UUID4 | None = None,
         detailed: bool = True,
     ) -> list[ItemsDetailsDict]:
         from sqlalchemy.dialects.postgresql import to_tsvector, plainto_tsquery
@@ -181,10 +190,11 @@ class ReceiptRepository:
             query = query.where(Receipt.invoice_number == invoice_number)
         if payment_method:
             query = query.where(Receipt.payment_method == payment_method)
+        if user_id:
+            query = query.where(Receipt.user_id == user_id)
 
 
         if business_name:
-            print("business_name:")
             query = query.where(
                 func.to_tsvector('english', Business.name).op('@@')(
                     func.plainto_tsquery('english', business_name)
@@ -193,7 +203,6 @@ class ReceiptRepository:
             )
 
         if cashier_fuzzy_search:
-            print("cashier_fuzzy_search:")
             query = query.where(
                 func.to_tsvector('english', Receipt.cashier_name).op('@@')(
                     func.plainto_tsquery('english', cashier_fuzzy_search)
@@ -202,7 +211,6 @@ class ReceiptRepository:
             )
 
         if item_fuzzy_search:
-            print("item_fuzzy_search:")
             query = query.where(
                 func.to_tsvector('english', Items.description).op('@@')(
                     func.plainto_tsquery('english', item_fuzzy_search)
